@@ -379,10 +379,10 @@ function Icon({ name, size = 20 }: IconProps) {
 function AppEntry({
   onChoose,
 }: {
-  onChoose: (role: Exclude<Role, "admin">) => void
+  onChoose: (role: Role) => void
 }) {
   const choices: {
-    role: Exclude<Role, "admin">
+    role: Role
     label: string
     description: string
     icon: string
@@ -408,6 +408,13 @@ function AppEntry({
       description: "Help people in your community",
       icon: "shield",
       detail: "Available tasks · Service records · Rewards",
+    },
+    {
+      role: "admin",
+      label: "Coordinator (Demo Access)",
+      description: "Coordinate care and community support",
+      icon: "clipboard",
+      detail: "Assignments · Verification · Operations",
     },
   ]
 
@@ -3483,7 +3490,9 @@ export default function App() {
                 ? "onboarding"
                 : selectedRole === "family"
                   ? "dashboard"
-                  : "application",
+                  : selectedRole === "volunteer"
+                    ? "application"
+                    : "overview",
           }))
         }}
       />
