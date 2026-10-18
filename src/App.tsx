@@ -78,11 +78,34 @@ type DemoAlert = {
   status: "Needs Response" | "Safe" | "Escalated" | "Acknowledged"
 }
 
+type PrivacySettings = {
+  shareHealthReadings: boolean
+  shareServiceLocation: boolean
+  cctvConsent: boolean
+}
+
+type EmergencyContact = {
+  id: string
+  name: string
+  relationship: string
+  details: string
+  primary?: boolean
+}
+
+type RetentionSettings = {
+  profileData: "90 days" | "12 months" | "Until manually deleted"
+  accessLogs: "30 days" | "90 days" | "12 months"
+}
+
 type DemoState = {
   requests: CareRequest[]
   rewardTransactions: RewardTransaction[]
   redemptions: RedemptionRecord[]
   alert: DemoAlert
+  privacy: PrivacySettings
+  emergencyContacts: EmergencyContact[]
+  approvedVolunteerApplications: string[]
+  retention: RetentionSettings
 }
 
 const SERVICE_POINTS = {
@@ -183,6 +206,25 @@ const INITIAL_DEMO_STATE: DemoState = {
     id: "AL-204",
     resident: "Margaret Lee",
     status: "Needs Response",
+  },
+  privacy: {
+    shareHealthReadings: true,
+    shareServiceLocation: true,
+    cctvConsent: true,
+  },
+  emergencyContacts: [
+    {
+      id: "EC-1001",
+      name: "Rachel Lee",
+      relationship: "Daughter",
+      details: "Primary demo contact",
+      primary: true,
+    },
+  ],
+  approvedVolunteerApplications: [],
+  retention: {
+    profileData: "Until manually deleted",
+    accessLogs: "90 days",
   },
 }
 
@@ -1193,11 +1235,51 @@ function CareScreen({
 function ProfileScreen({
   recipientType,
   setRecipientType,
+  privacy,
+  contacts,
+  retention,
+  updatePrivacy,
+  addContact,
+  removeContact,
+  updateRetention,
+  downloadDemoData,
+  resetProfileData,
 }: {
   recipientType: string
   setRecipientType: (value: string) => void
+  privacy: PrivacySettings
+  contacts: EmergencyContact[]
+  retention: RetentionSettings
+  updatePrivacy: (setting: keyof PrivacySettings, value: boolean) => void
+  addContact: (contact: Omit<EmergencyContact, "id">) => void
+  removeContact: (id: string) => void
+  updateRetention: (
+    setting: keyof RetentionSettings,
+    value: RetentionSettings[keyof RetentionSettings],
+  ) => void
+  downloadDemoData: () => void
+  resetProfileData: () => void
 }) {
-  const [cctv, setCctv] = useState(true)
+  const [showContactForm, setShowContactForm] = useState(false)
+  const [contactName, setContactName] = useState("")
+  const [relationship, setRelationship] = useState("")
+  const [contactDetails, setContactDetails] = useState("")
+  const [showRetention, setShowRetention] = useState(false)
+  const [confirmReset, setConfirmReset] = useState(false)
+  const saveContact = () => {
+    if (!contactName.trim() || !relationship.trim() || !contactDetails.trim())
+      return
+    addContact({
+      name: contactName.trim(),
+      relationship: relationship.trim(),
+      details: contactDetails.trim(),
+    })
+    setContactName("")
+    setRelationship("")
+    setContactDetails("")
+    setShowContactForm(false)
+  }
+
   return (
     <div className="screen-stack">
       <PageTitle eyebrow="Margaret Lee" title="Profile & privacy" />
@@ -1225,43 +1307,140 @@ function ProfileScreen({
       </Card>
       <Card>
         <h2>Emergency contacts</h2>
-        <div className="contact-row">
-          <Avatar name="Rachel Lee" />
-          <div className="grow">
-            <strong>Rachel Lee</strong>
-            <span>Daughter · Primary contact</span>
+        {contacts.map((contact) => (
+          <div className="contact-row" key={contact.id}>
+            <Avatar name={contact.name} />
+            <div className="grow">
+              <strong>{contact.name}</strong>
+              <span>
+                {contact.relationship} · {contact.details}
+              </span>
+            </div>
+            <Button variant="ghost" onClick={() => removeContact(contact.id)}>
+              Remove
+            </Button>
           </div>
-          <Badge tone="green">Authorised</Badge>
-        </div>
-        <Button wide variant="secondary" icon="plus">
-          Add emergency contact
-        </Button>
+        ))}
+        {showContactForm ? (
+          <>
+            <label className="field-label" htmlFor="contact-name">
+              Contact name
+            </label>
+            <input
+              id="contact-name"
+              className="form-control"
+              value={contactName}
+              onChange={(event) => setContactName(event.target.value)}
+            />
+            <label className="field-label" htmlFor="contact-relationship">
+              Relationship
+            </label>
+            <input
+              id="contact-relationship"
+              className="form-control"
+              value={relationship}
+              onChange={(event) => setRelationship(event.target.value)}
+            />
+            <label className="field-label" htmlFor="contact-details">
+              Contact details
+            </label>
+            <input
+              id="contact-details"
+              className="form-control"
+              value={contactDetails}
+              onChange={(event) => setContactDetails(event.target.value)}
+              placeholder="Demo phone number or email"
+            />
+            <div className="sticky-actions">
+              <Button
+                wide
+                variant="secondary"
+                onClick={() => setShowContactForm(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                wide
+                onClick={saveContact}
+                disabled={
+                  !contactName.trim() ||
+                  !relationship.trim() ||
+                  !contactDetails.trim()
+                }
+              >
+                Save contact
+              </Button>
+            </div>
+          </>
+        ) : (
+          <Button
+            wide
+            variant="secondary"
+            icon="plus"
+            onClick={() => setShowContactForm(true)}
+          >
+            Add emergency contact
+          </Button>
+        )}
       </Card>
       <Card>
         <h2>Health & location permissions</h2>
         <InfoRow
           icon="heart"
           label="Share simulated health readings"
-          value="Rachel Lee, Care coordinator"
-          end={<Toggle />}
+          value={
+            privacy.shareHealthReadings
+              ? "Shared with authorised family"
+              : "Not shared with family"
+          }
+          end={
+            <Toggle
+              on={privacy.shareHealthReadings}
+              onChange={() =>
+                updatePrivacy(
+                  "shareHealthReadings",
+                  !privacy.shareHealthReadings,
+                )
+              }
+            />
+          }
         />
         <InfoRow
           icon="location"
           label="Share location during service"
-          value="Only while a care task is active"
-          end={<Toggle />}
+          value={
+            privacy.shareServiceLocation
+              ? "Only while a care task is active"
+              : "Location access revoked"
+          }
+          end={
+            <Toggle
+              on={privacy.shareServiceLocation}
+              onChange={() =>
+                updatePrivacy(
+                  "shareServiceLocation",
+                  !privacy.shareServiceLocation,
+                )
+              }
+            />
+          }
         />
       </Card>
       <Card>
         <div className="section-heading">
           <h2>Optional CCTV consent</h2>
-          <Toggle on={cctv} onChange={() => setCctv(!cctv)} />
+          <Toggle
+            on={privacy.cctvConsent}
+            onChange={() =>
+              updatePrivacy("cctvConsent", !privacy.cctvConsent)
+            }
+          />
         </div>
         <p className="muted">
           Authorised family may request access during an active alert.
           Volunteers never have routine access.
         </p>
-        {cctv ? (
+        {privacy.cctvConsent ? (
           <div className="consent-box">
             <Icon name="check" />
             <span>
@@ -1278,9 +1457,15 @@ function ProfileScreen({
             </div>
           </div>
         )}
-        <Button wide variant="ghost" onClick={() => setCctv(false)}>
-          Revoke CCTV access
-        </Button>
+        {privacy.cctvConsent && (
+          <Button
+            wide
+            variant="ghost"
+            onClick={() => updatePrivacy("cctvConsent", false)}
+          >
+            Revoke CCTV access
+          </Button>
+        )}
       </Card>
       <Card>
         <h2>Data controls</h2>
@@ -1288,15 +1473,108 @@ function ProfileScreen({
           icon="file"
           label="Download my demo data"
           value="Health, care and access history"
-          end={<Icon name="arrow" />}
+          end={
+            <Button variant="ghost" onClick={downloadDemoData}>
+              Download JSON
+            </Button>
+          }
         />
         <InfoRow
           icon="lock"
           label="Retention & deletion"
           value="Manage how long records are kept"
-          end={<Icon name="arrow" />}
+          end={
+            <Button
+              variant="ghost"
+              onClick={() => setShowRetention(!showRetention)}
+            >
+              Manage
+            </Button>
+          }
         />
+        {showRetention && (
+          <div className="note-box">
+            <label className="field-label" htmlFor="profile-retention">
+              Profile preferences and contacts
+            </label>
+            <select
+              id="profile-retention"
+              className="form-control"
+              value={retention.profileData}
+              onChange={(event) =>
+                updateRetention(
+                  "profileData",
+                  event.target.value as RetentionSettings["profileData"],
+                )
+              }
+            >
+              <option>90 days</option>
+              <option>12 months</option>
+              <option>Until manually deleted</option>
+            </select>
+            <label className="field-label" htmlFor="access-retention">
+              Access history
+            </label>
+            <select
+              id="access-retention"
+              className="form-control"
+              value={retention.accessLogs}
+              onChange={(event) =>
+                updateRetention(
+                  "accessLogs",
+                  event.target.value as RetentionSettings["accessLogs"],
+                )
+              }
+            >
+              <option>30 days</option>
+              <option>90 days</option>
+              <option>12 months</option>
+            </select>
+            <p className="muted">
+              Resetting profile data restores privacy defaults and removes
+              added emergency contacts. Care requests, verification history,
+              points, rewards and redemptions are never deleted here.
+            </p>
+            {confirmReset ? (
+              <div className="sticky-actions">
+                <Button
+                  wide
+                  variant="secondary"
+                  onClick={() => setConfirmReset(false)}
+                >
+                  Keep data
+                </Button>
+                <Button
+                  wide
+                  variant="danger"
+                  onClick={() => {
+                    resetProfileData()
+                    setConfirmReset(false)
+                  }}
+                >
+                  Confirm profile reset
+                </Button>
+              </div>
+            ) : (
+              <Button
+                wide
+                variant="ghost"
+                onClick={() => setConfirmReset(true)}
+              >
+                Reset profile preferences
+              </Button>
+            )}
+          </div>
+        )}
       </Card>
+      <div className="safety-note">
+        <Icon name="lock" />
+        <span>
+          <strong>Stored on this browser only</strong>
+          Care Link uses local demo storage. Changes survive refreshes on this
+          device but do not synchronise to other browsers or devices.
+        </span>
+      </div>
     </div>
   )
 }
@@ -1305,10 +1583,12 @@ function FamilyDashboard({
   go,
   request,
   alert,
+  privacy,
 }: {
   go: (p: string) => void
   request: CareRequest
   alert: DemoAlert
+  privacy: PrivacySettings
 }) {
   return (
     <div className="screen-stack">
@@ -1320,27 +1600,59 @@ function FamilyDashboard({
             <h2>Margaret Lee</h2>
             <p>Mum · Authorised 2 May 2025</p>
           </div>
-          <Badge tone="green">Connected</Badge>
+          <Badge
+            tone={
+              privacy.shareHealthReadings && privacy.shareServiceLocation
+                ? "green"
+                : "amber"
+            }
+          >
+            {privacy.shareHealthReadings && privacy.shareServiceLocation
+              ? "Authorised"
+              : "Limited access"}
+          </Badge>
         </div>
         <div className="member-stats">
           <div>
             <span>Heart rate</span>
-            <strong>72 bpm</strong>
-            <small>2 min ago</small>
+            <strong>
+              {privacy.shareHealthReadings ? "72 bpm" : "Not shared"}
+            </strong>
+            <small>
+              {privacy.shareHealthReadings
+                ? "Simulated · 2 min ago"
+                : "Resident permission revoked"}
+            </small>
           </div>
           <div>
             <span>Activity</span>
-            <strong>3,248</strong>
-            <small>steps today</small>
+            <strong>
+              {privacy.shareHealthReadings ? "3,248" : "Not shared"}
+            </strong>
+            <small>
+              {privacy.shareHealthReadings
+                ? "simulated steps"
+                : "Resident permission revoked"}
+            </small>
           </div>
         </div>
         <div className="location-update">
           <Icon name="location" size={17} />
           <div>
-            <strong>Home zone · Test location</strong>
-            <small>Shared with your authorisation · Updated 4 min ago</small>
+            <strong>
+              {privacy.shareServiceLocation
+                ? "Home zone · Test location"
+                : "Location not shared"}
+            </strong>
+            <small>
+              {privacy.shareServiceLocation
+                ? "Shared for active care only · Simulated"
+                : "Resident permission revoked"}
+            </small>
           </div>
-          <Badge tone="blue">Authorised</Badge>
+          <Badge tone={privacy.shareServiceLocation ? "blue" : "gray"}>
+            {privacy.shareServiceLocation ? "Authorised" : "Private"}
+          </Badge>
         </div>
       </Card>
       <section>
@@ -1355,9 +1667,21 @@ function FamilyDashboard({
             <Icon name="heart" />
           </span>
           <span className="grow">
-            <small>SIMULATED HEALTH ALERT · 9:42 AM</small>
-            <strong>Unusual heart-rate reading</strong>
-            <span>48 bpm · CareWatch M2</span>
+            <small>
+              {privacy.shareHealthReadings
+                ? "SIMULATED HEALTH ALERT · 9:42 AM"
+                : "PROTECTED HEALTH INFORMATION"}
+            </small>
+            <strong>
+              {privacy.shareHealthReadings
+                ? "Unusual heart-rate reading"
+                : "Alert details not shared"}
+            </strong>
+            <span>
+              {privacy.shareHealthReadings
+                ? "48 bpm · CareWatch M2"
+                : "Contact Margaret directly if concerned"}
+            </span>
           </span>
           <Icon name="arrow" />
         </button>
@@ -1400,10 +1724,12 @@ function AlertDetails({
   setModal,
   alert,
   markSafe,
+  privacy,
 }: {
   setModal: (m: ModalType) => void
   alert: DemoAlert
   markSafe: () => void
+  privacy: PrivacySettings
 }) {
   return (
     <div className="screen-stack">
@@ -1414,7 +1740,11 @@ function AlertDetails({
         <div>
           <div className="eyebrow">{alert.status} · Simulated alert</div>
           <h1>Check on Margaret</h1>
-          <p>Unusual heart-rate reading detected</p>
+          <p>
+            {privacy.shareHealthReadings
+              ? "Unusual heart-rate reading detected"
+              : "Health details are not shared"}
+          </p>
         </div>
       </div>
       <Card>
@@ -1428,24 +1758,42 @@ function AlertDetails({
         <InfoRow
           icon="heart"
           label="Watch reading"
-          value="48 bpm · below usual range"
+          value={
+            privacy.shareHealthReadings
+              ? "48 bpm · below usual range"
+              : "Protected · resident permission revoked"
+          }
         />
         <InfoRow
           icon="watch"
           label="Device status"
-          value="Connected · 84% battery"
+          value={
+            privacy.shareHealthReadings
+              ? "CareWatch M2 · connected · 84% battery"
+              : "Device details not shared"
+          }
         />
         <InfoRow
           icon="location"
           label="Test location"
-          value="18 Willow Street"
+          value={
+            privacy.shareServiceLocation
+              ? "18 Willow Street"
+              : "Protected · location permission revoked"
+          }
         />
       </Card>
       <Card className="cctv-panel">
         <div className="cctv-image">
           <Icon name="camera" size={34} />
-          <span>Footage unavailable</span>
-          <small>Camera offline · Last checked 9:43 am</small>
+          <span>
+            {privacy.cctvConsent ? "Footage unavailable" : "Access revoked"}
+          </span>
+          <small>
+            {privacy.cctvConsent
+              ? "Camera offline · Last checked 9:43 am"
+              : "Resident has not granted CCTV consent"}
+          </small>
         </div>
         <div className="cctv-copy">
           <Icon name="shield" />
@@ -1501,9 +1849,11 @@ function AlertDetails({
 function FamilyTracking({
   request,
   onComplete,
+  privacy,
 }: {
   request: CareRequest
   onComplete: () => void
+  privacy: PrivacySettings
 }) {
   const volunteer = VOLUNTEERS.find(
     (item) => item.id === request.assignedVolunteerId,
@@ -1519,7 +1869,10 @@ function FamilyTracking({
         </div>
         <h2>{request.time}</h2>
         <p className="muted">
-          Requested by Margaret · {request.location} (test)
+          Requested by Margaret ·{" "}
+          {privacy.shareServiceLocation
+            ? `${request.location} (test)`
+            : "Location not shared"}
         </p>
         <Progress step={progressForStatus(request.status)} />
       </Card>
@@ -2131,6 +2484,8 @@ function AdminContent({
   redemptions,
   alert,
   acknowledgeAlert,
+  approvedVolunteerApplications,
+  approveVolunteerApplication,
 }: {
   page: string
   navigate: (p: string) => void
@@ -2144,6 +2499,8 @@ function AdminContent({
   redemptions: RedemptionRecord[]
   alert: DemoAlert
   acknowledgeAlert: () => void
+  approvedVolunteerApplications: string[]
+  approveVolunteerApplication: (id: string, name: string) => void
 }) {
   if (page === "overview")
     return (
@@ -2171,8 +2528,11 @@ function AdminContent({
           />
           <StatCard
             label="Volunteer applications"
-            value="7"
-            change="3 ready for review"
+            value={(3 - approvedVolunteerApplications.length).toString()}
+            change={`${Math.max(
+              0,
+              1 - approvedVolunteerApplications.length,
+            )} ready for approval`}
             tone="amber"
           />
           <StatCard
@@ -2344,12 +2704,19 @@ function AdminContent({
       </>
     )
   if (page === "volunteers")
+    {
+      const mayaApproved =
+        approvedVolunteerApplications.includes("maya-chen")
     return (
       <>
         <PageTitle
           eyebrow="People & safeguarding"
           title="Volunteer approval"
-          action={<Badge tone="amber">7 pending</Badge>}
+          action={
+            <Badge tone="amber">
+              {3 - approvedVolunteerApplications.length} pending
+            </Badge>
+          }
         />
         <Card>
           <AdminTable
@@ -2374,9 +2741,17 @@ function AdminContent({
                 <Badge tone="green">Complete</Badge>,
                 <Badge tone="green">Passed</Badge>,
                 "Community tasks",
-                <Button onClick={() => toast("Maya Chen approved")}>
-                  Approve
-                </Button>,
+                mayaApproved ? (
+                  <Badge tone="green">Approved</Badge>
+                ) : (
+                  <Button
+                    onClick={() =>
+                      approveVolunteerApplication("maya-chen", "Maya Chen")
+                    }
+                  >
+                    Approve
+                  </Button>
+                ),
               ],
               [
                 <div className="person-cell">
@@ -2424,6 +2799,7 @@ function AdminContent({
         </Card>
       </>
     )
+    }
   if (page === "assignment")
     {
       const assignedVolunteer = VOLUNTEERS.find(
@@ -3034,6 +3410,12 @@ export default function App() {
           ...redemption,
           volunteerId: redemption.volunteerId ?? "daniel",
         })),
+        privacy: parsed.privacy ?? INITIAL_DEMO_STATE.privacy,
+        emergencyContacts:
+          parsed.emergencyContacts ?? INITIAL_DEMO_STATE.emergencyContacts,
+        approvedVolunteerApplications:
+          parsed.approvedVolunteerApplications ?? [],
+        retention: parsed.retention ?? INITIAL_DEMO_STATE.retention,
       }
     } catch {
       return INITIAL_DEMO_STATE
@@ -3105,6 +3487,61 @@ export default function App() {
   const notify = (text: string) => {
     setToast(text)
     window.setTimeout(() => setToast(""), 2600)
+  }
+  const updatePrivacy = (
+    setting: keyof PrivacySettings,
+    value: boolean,
+  ) => {
+    setDemoState((state) => ({
+      ...state,
+      privacy: { ...state.privacy, [setting]: value },
+    }))
+    notify("Privacy permission saved on this browser")
+  }
+  const downloadDemoData = () => {
+    const exportData = {
+      exportedAt: new Date().toISOString(),
+      storageNotice:
+        "Simulated Care Link data stored locally in this browser only.",
+      resident: {
+        id: "margaret",
+        name: "Margaret Lee",
+        recipientType,
+        privacy: demoState.privacy,
+        emergencyContacts: demoState.emergencyContacts,
+        retention: demoState.retention,
+      },
+      requests: demoState.requests.filter(
+        (request) => request.residentId === "margaret",
+      ),
+      simulatedAlert: demoState.alert,
+      rewardTransactions: demoState.rewardTransactions,
+      redemptions: demoState.redemptions,
+    }
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], {
+      type: "application/json",
+    })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    link.href = url
+    link.download = "care-link-margaret-demo-data.json"
+    link.click()
+    URL.revokeObjectURL(url)
+    notify("Demo data JSON downloaded")
+  }
+  const approveVolunteerApplication = (id: string, name: string) => {
+    setDemoState((state) =>
+      state.approvedVolunteerApplications.includes(id)
+        ? state
+        : {
+            ...state,
+            approvedVolunteerApplications: [
+              ...state.approvedVolunteerApplications,
+              id,
+            ],
+          },
+    )
+    notify(`${name} approved · decision saved locally`)
   }
   const createRequest = (draft: {
     category: ServiceCategory
@@ -3351,6 +3788,46 @@ export default function App() {
         <ProfileScreen
           recipientType={recipientType}
           setRecipientType={setRecipientType}
+          privacy={demoState.privacy}
+          contacts={demoState.emergencyContacts}
+          retention={demoState.retention}
+          updatePrivacy={updatePrivacy}
+          addContact={(contact) => {
+            setDemoState((state) => ({
+              ...state,
+              emergencyContacts: [
+                ...state.emergencyContacts,
+                { ...contact, id: `EC-${Date.now()}` },
+              ],
+            }))
+            notify("Emergency contact saved locally")
+          }}
+          removeContact={(id) => {
+            setDemoState((state) => ({
+              ...state,
+              emergencyContacts: state.emergencyContacts.filter(
+                (contact) => contact.id !== id,
+              ),
+            }))
+            notify("Emergency contact removed")
+          }}
+          updateRetention={(setting, value) => {
+            setDemoState((state) => ({
+              ...state,
+              retention: { ...state.retention, [setting]: value },
+            }))
+            notify("Demo retention preference saved")
+          }}
+          downloadDemoData={downloadDemoData}
+          resetProfileData={() => {
+            setDemoState((state) => ({
+              ...state,
+              privacy: INITIAL_DEMO_STATE.privacy,
+              emergencyContacts: INITIAL_DEMO_STATE.emergencyContacts,
+              retention: INITIAL_DEMO_STATE.retention,
+            }))
+            notify("Profile preferences reset · care and rewards preserved")
+          }}
         />
       )
   else if (role === "family")
@@ -3360,11 +3837,13 @@ export default function App() {
           go={navigate}
           request={selectedRequest}
           alert={demoState.alert}
+          privacy={demoState.privacy}
         />
       ) : current === "alert" ? (
         <AlertDetails
           setModal={setModal}
           alert={demoState.alert}
+          privacy={demoState.privacy}
           markSafe={() => {
             setDemoState((state) => ({
               ...state,
@@ -3377,6 +3856,7 @@ export default function App() {
         <FamilyTracking
           request={selectedRequest}
           onComplete={() => setModal("complete")}
+          privacy={demoState.privacy}
         />
       )
   else if (role === "volunteer")
@@ -3468,6 +3948,10 @@ export default function App() {
           }))
           notify("Simulated alert acknowledged and under coordinator review")
         }}
+        approvedVolunteerApplications={
+          demoState.approvedVolunteerApplications
+        }
+        approveVolunteerApplication={approveVolunteerApplication}
       />
     )
 
